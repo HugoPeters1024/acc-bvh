@@ -61,7 +61,7 @@ data TriangleHitInfo = TriangleHitInfo_
     , u :: Float
     , v :: Float
     , i :: Maybe DIM1
-    } deriving (Generic, Elt)
+    } deriving (Generic, Elt, Show)
 
 pattern TriangleHitInfo :: Exp Float -> Exp Float -> Exp Float -> Exp (Maybe DIM1) -> Exp TriangleHitInfo
 pattern TriangleHitInfo t u v i = A.Pattern (t, u, v, i)

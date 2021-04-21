@@ -139,7 +139,13 @@ render = let
      in reshape (I2 640 480) pixels
 
 main :: IO ()
-main = G.playArrayWith PTX.run1
+main = do
+    let hi = PTX.run (sceneIntersect (mkScene 0) initialRays)
+    print hi
+
+    {-
+main :: IO ()
+main = G.playArrayWith Interpreter.run1
     (G.InWindow "BVH" (640, 480) (10,10))
     (1,1)
     60
@@ -148,3 +154,4 @@ main = G.playArrayWith PTX.run1
     (const render)
     (const id)
     (const id)
+    -}
