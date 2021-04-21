@@ -5,3 +5,6 @@ cradle:
 
     - path: "app/LinAlg.hs"
       component: "acc-structure:exe:acc-structure"
+
+    - path: "app/Structures.hs"
+      component: "acc-structure:exe:acc-structure"

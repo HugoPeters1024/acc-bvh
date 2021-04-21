@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE LambdaCase #-}
@@ -6,6 +7,9 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE MagicHash #-}
 module Main where
 
 
@@ -21,15 +25,40 @@ import Data.Array.Accelerate.Linear.Metric
 import Data.Array.Accelerate.Linear.Matrix
 import Control.Monad.Trans.Reader
 import Control.Monad.Identity
+import GHC.Generics
+import GHC.TypeNats
+
+import Structures
+
+type Scene = Acc (Vector Triangle, Vector BVH)
+
+data BVH = BVH_ Bool Int Int
+    deriving (Generic, Elt)
+
+pattern BVH :: Exp Bool -> Exp Int -> Exp Int -> Exp BVH
+pattern BVH leaf l r = A.Pattern (leaf, l, r)
+
+pattern Leaf :: Exp Int -> Exp Int -> Exp BVH
+pattern Leaf l r = BVH False_ l r
+
+pattern Node :: Exp Int -> Exp Int -> Exp BVH
+pattern Node l r = BVH True_ l r
 
 
-type Scene = Acc (Vector Triangle)
+isLeaf :: Exp BVH -> Exp Bool
+isLeaf (Leaf _ _) = True_
+isLeaf (Node _ _) = False_
 
-type RayT a = (?scene :: Scene) => a
+lol :: [Exp BVH]
+lol = [Leaf 0 0, Node 4 4]
 
-runRayT :: Scene -> RayT a -> a 
-runRayT scene next = let ?scene = scene in next
+traverseBVH :: BVH -> Exp Ray -> Exp TriangleHitInfo
+traverseBVH bvh ray = let
+    stack :: Acc (Matrix BVH)
+    stack = undefined
 
+    emtpyHit = TriangleHitInfo 0 0 0 Nothing_
+    in undefined
 
 vecToColor :: Exp V3f -> Exp G.Colour
 vecToColor (V3_ x y z) = G.rgba x y z 1
@@ -48,8 +77,9 @@ triangle (I1 i) = Triangle
             (V3_ 1   0 1)
             (V3_ 0.5 1 1)
 
-triangles :: Exp Float -> Acc (Vector Triangle)
-triangles time = A.generate (I1 1) triangle
+mkScene :: Exp Float -> Acc (Vector Triangle, Vector BVH)
+mkScene time = T2 (A.generate (I1 1) triangle) (A.generate (I1 1) (const (Leaf 0 0)))
+
 
 genRay :: Exp Float -> Exp Float -> Exp Ray
 genRay x y = 
@@ -59,34 +89,30 @@ genRay x y =
         direction = normalize (target - origin)
     in Ray origin direction
 
-nrTriangles :: Scene -> Exp Int
-nrTriangles = unindex1 . shape
-
 pnext1 :: Exp DIM1 -> Exp DIM1
 pnext1 (I1 i) = I1 (i+1)
 
+type ShortStack a = Stack ('NS 'NZ) a
+
+type WState = Acc (Vector TriangleHitInfo, Scalar (ShortStack BVH))
+
+liftAcc :: (Elt a, Elt b) => (Exp a -> Exp b) -> (Acc (Scalar a) -> Acc (Scalar b))
+liftAcc f = unit . f . the
+
 sceneIntersect :: Scene -> Acc (Vector Ray) -> Acc (Vector TriangleHitInfo)
-sceneIntersect scene rays =
+sceneIntersect (T2 triangles bvh) rays =
     let
-        initialWhileState :: Acc (Vector TriangleHitInfo, Scalar DIM1)
-        initialWhileState = lift (A.map (const (TriangleHitInfo 0 0 0 Nothing_)) rays, unit (I1 0))
+        startStack :: Exp (ShortStack BVH)
+        startStack = stackPush emptyStack (bvh!I1 0)
 
-        whileCond :: Acc (Vector TriangleHitInfo, Scalar DIM1) -> Acc (Scalar Bool)
-        whileCond (T2 _ c) = (unit . (A.< nrTriangles scene) . unindex1 . the) c 
+        initialWhileState :: WState
+        initialWhileState = lift (A.map (const (TriangleHitInfo 0 0 0 Nothing_)) rays, unit startStack)
 
-        itWhile :: Acc (Vector TriangleHitInfo, Scalar DIM1) -> Acc (Vector TriangleHitInfo, Scalar DIM1)
-        itWhile (T2 hs c) = let 
+        whileCond :: WState -> Acc (Scalar Bool)
+        whileCond (T2 _ c) = unit False_ --liftAcc (A.not . stackIsEmpty) c 
 
-            i :: Exp DIM1
-            i = the c
-            -- Triangle to process in this wave
-            triangle :: Exp Triangle
-            triangle = scene ! i
-
-            hitInfos :: Acc (Vector TriangleHitInfo)
-            hitInfos = A.map (rayIntersect i triangle) rays
-
-            in T2 (A.zipWith closer hs hitInfos) (unit (pnext1 i))
+        itWhile :: WState -> WState
+        itWhile (T2 hs s) = T2 hs (A.map (A.snd . stackPop) s)
 
         in A.afst $ A.awhile whileCond itWhile initialWhileState
 
@@ -108,13 +134,12 @@ divF a b = A.fromIntegral a / A.fromIntegral b
 render :: Acc (Array DIM2 G.Colour)
 render = let
         rays = initialRays
-        scene = triangles 0
+        scene = mkScene 0
         pixels = A.map hitInfoToColor (sceneIntersect scene rays)
      in reshape (I2 640 480) pixels
 
 main :: IO ()
-main = G.playArrayWith
-    PTX.run1
+main = G.playArrayWith PTX.run1
     (G.InWindow "BVH" (640, 480) (10,10))
     (1,1)
     60

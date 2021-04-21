@@ -23,10 +23,12 @@ extra-source-files: CHANGELOG.md
 
 executable acc-structure
     main-is:          Main.hs
-    ghc-options: -threaded
+    ghc-options: -threaded -fplugin GHC.TypeLits.KnownNat.Solver
+                
 
     -- Modules included in this executable, other than Main.
     other-modules: LinAlg
+                   Structures
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
@@ -39,5 +41,9 @@ executable acc-structure
                     , linear-accelerate
                     , transformers
                     , mtl
+                    , primitive
+                    , data-default
+                    , ghc-prim
+                    , ghc-typelits-knownnat
     hs-source-dirs:   app
     default-language: Haskell2010
