@@ -18,6 +18,7 @@ module Structures (
     stackPush, stackPush',
     stackPop, stackPop',
     stackIsEmpty, stackIsEmpty',
+    stackLength, stackLength'
 ) where
 
 import qualified Data.Array.Accelerate as A
@@ -119,7 +120,7 @@ stackMap = stackMap' inferNat
 
 -- This becomes a right-leaning tree of conditionals
 pilePush :: forall n a. A.Elt a => NatTerm n -> Int -> A.Exp Int -> A.Exp (Pile n a) -> A.Exp a -> A.Exp (Int, Pile n a)
-pilePush ZZ _ len _ _ = A.T2 len A.undef  -- stack overflow! TODO: assert
+pilePush ZZ _ len _ _ = A.undef 
 pilePush (SS nn) depth len prep x
   | Has <- pileHasElt (Proxy @a) nn
   , A.T2 p y <- prep  -- needs evidence from 'pileHasElt'
@@ -144,7 +145,7 @@ stackPush' nn stackexpr x
   , Has <- pileHasElt (Proxy @a) nn
   , Stack len p <- stackexpr  -- needs evidence from 'pileHasElt'/'natTermIsKnown'
   , A.T2 len' p' <- pilePush nn 0 len p x
-  = Stack len' p'
+  = Stack (len'+1) p'
 
 stackPush :: forall n a. (KnownNat n, A.Elt a) => A.Exp (Stack n a) -> A.Exp a -> A.Exp (Stack n a)
 stackPush = stackPush' inferNat
@@ -169,3 +170,14 @@ stackIsEmpty' nn stackexpr
 
 stackIsEmpty :: forall n a. (KnownNat n, A.Elt a) => A.Exp (Stack n a) -> A.Exp Bool
 stackIsEmpty = stackIsEmpty' inferNat
+
+stackLength :: forall n a. (A.Elt a, KnownNat n) => A.Exp (Stack n a) -> A.Exp Int
+stackLength = stackLength' inferNat
+
+stackLength' :: forall n a. (A.Elt a) => NatTerm n -> A.Exp (Stack n a) -> A.Exp Int
+stackLength' nn stackexpr
+    | Has <- natTermIsKnown nn
+    , Has <- pileHasElt (Proxy @a) nn
+    , Stack len _ <- stackexpr
+    = len
+

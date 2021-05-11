@@ -21,7 +21,7 @@ class Transformable a where
     tmul :: Exp Mat4f -> Exp a -> Exp a
 
 data Ray = Ray_ V3f V3f
-    deriving (Generic, Elt)
+    deriving (Generic, Elt, Show)
 
 pattern Ray :: Exp V3f -> Exp V3f -> Exp Ray
 pattern Ray o d = A.Pattern (o, d)
@@ -45,7 +45,7 @@ mtranslate (V4_
         (V4_ v30 v31 v32 v33)
 
 data Triangle = Triangle_ V3f V3f V3f
-    deriving (Generic, Elt)
+    deriving (Generic, Elt, Show)
 
 pattern Triangle :: Exp V3f -> Exp V3f -> Exp V3f -> Exp Triangle
 pattern Triangle v0 v1 v2 = A.Pattern (v0, v1, v2)

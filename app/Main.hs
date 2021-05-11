@@ -1,6 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DataKinds #-} {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE BlockArguments #-}
@@ -10,15 +9,20 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MagicHash #-}
+{-# LANGUAGE TypeApplications #-}
 module Main where
 
 
+import Debug.Trace
 import Prelude as P
 import LinAlg
 import qualified Graphics.Gloss as Gloss
 import Data.Array.Accelerate.LLVM.PTX as PTX
 import Data.Array.Accelerate.Interpreter as Interpreter
 import Data.Array.Accelerate as A
+import Data.Array.Accelerate.Error as A
+import Data.Array.Accelerate.Debug as A
+import qualified Data.Array.Accelerate.Unsafe as A
 import qualified Graphics.Gloss.Accelerate.Raster.Array as G
 import Data.Array.Accelerate.Linear.V3 as V3
 import Data.Array.Accelerate.Linear.Metric
@@ -33,7 +37,7 @@ import Structures
 type Scene = Acc (Vector Triangle, Vector BVH)
 
 data BVH = BVH_ Bool Int Int
-    deriving (Generic, Elt)
+    deriving (Generic, Elt, Show)
 
 pattern BVH :: Exp Bool -> Exp Int -> Exp Int -> Exp BVH
 pattern BVH leaf l r = A.Pattern (leaf, l, r)
@@ -44,21 +48,12 @@ pattern Leaf l r = BVH False_ l r
 pattern Node :: Exp Int -> Exp Int -> Exp BVH
 pattern Node l r = BVH True_ l r
 
-
 isLeaf :: Exp BVH -> Exp Bool
 isLeaf (Leaf _ _) = True_
 isLeaf (Node _ _) = False_
 
-lol :: [Exp BVH]
-lol = [Leaf 0 0, Node 4 4]
-
-traverseBVH :: BVH -> Exp Ray -> Exp TriangleHitInfo
-traverseBVH bvh ray = let
-    stack :: Acc (Matrix BVH)
-    stack = undefined
-
-    emtpyHit = TriangleHitInfo 0 0 0 Nothing_
-    in undefined
+lol :: Exp BVH
+lol = Node 4 4
 
 vecToColor :: Exp V3f -> Exp G.Colour
 vecToColor (V3_ x y z) = G.rgba x y z 1
@@ -78,7 +73,14 @@ triangle (I1 i) = Triangle
             (V3_ 0.5 1 1)
 
 mkScene :: Exp Float -> Acc (Vector Triangle, Vector BVH)
-mkScene time = T2 (A.generate (I1 1) triangle) (A.generate (I1 1) (const (Leaf 0 0)))
+mkScene time = let
+    ts :: Acc (Vector Triangle)
+    ts = A.generate (I1 5) triangle
+
+    bvhs :: Acc (Vector BVH)
+    bvhs = A.use $ A.fromList (Z :. 2) [BVH_ True 1 1, BVH_ False 0 1]
+
+    in T2 ts bvhs;
 
 
 genRay :: Exp Float -> Exp Float -> Exp Ray
@@ -94,10 +96,10 @@ pnext1 (I1 i) = I1 (i+1)
 
 type ShortStack a = Stack ('NS 'NZ) a
 
-type WState = Acc (Vector TriangleHitInfo, Scalar (ShortStack BVH))
-
 liftAcc :: (Elt a, Elt b) => (Exp a -> Exp b) -> (Acc (Scalar a) -> Acc (Scalar b))
 liftAcc f = unit . f . the
+
+type WState = Acc (Vector TriangleHitInfo, Scalar (ShortStack BVH))
 
 sceneIntersect :: Scene -> Acc (Vector Ray) -> Acc (Vector TriangleHitInfo)
 sceneIntersect (T2 triangles bvh) rays =
@@ -109,10 +111,32 @@ sceneIntersect (T2 triangles bvh) rays =
         initialWhileState = lift (A.map (const (TriangleHitInfo 0 0 0 Nothing_)) rays, unit startStack)
 
         whileCond :: WState -> Acc (Scalar Bool)
-        whileCond (T2 _ c) = unit False_ --liftAcc (A.not . stackIsEmpty) c 
+        whileCond (T2 _ c) = A.map (A.not . stackIsEmpty) c 
 
         itWhile :: WState -> WState
-        itWhile (T2 hs s) = T2 hs (A.map (A.snd . stackPop) s)
+        itWhile (T2 hs s) = let
+            T2 node news = stackPop $ the s
+
+            f :: Exp TriangleHitInfo -> Exp Ray -> Exp TriangleHitInfo
+            f h ray = node & match \case
+                Node _ _ -> h
+                Leaf start count -> let
+                  offsetted (I1 n) = let nid = I1 (n+start) in rayIntersect nid (triangles!nid) ray
+
+                  folder :: Exp TriangleHitInfo -> Exp DIM1 -> Exp TriangleHitInfo
+                  folder it i = closer it (offsetted i)
+
+                  in A.sfoldl folder h (constant Z) (A.generate (I1 count) id)
+
+            g :: Exp (ShortStack BVH) -> Exp (ShortStack BVH)
+            g s = node & match \case
+                Leaf _ _ -> s 
+                Node l r -> stackPush (stackPush s (bvh!I1 l)) (bvh!I1 r) 
+
+            newhs :: Acc (Vector TriangleHitInfo)
+            newhs = A.zipWith f hs rays
+
+            in T2 newhs (unit (g news))
 
         in A.afst $ A.awhile whileCond itWhile initialWhileState
 
@@ -138,14 +162,10 @@ render = let
         pixels = A.map hitInfoToColor (sceneIntersect scene rays)
      in reshape (I2 640 480) pixels
 
-main :: IO ()
-main = do
-    let hi = PTX.run (sceneIntersect (mkScene 0) initialRays)
-    print hi
+    
 
-    {-
 main :: IO ()
-main = G.playArrayWith Interpreter.run1
+main = G.playArrayWith PTX.run1
     (G.InWindow "BVH" (640, 480) (10,10))
     (1,1)
     60
@@ -154,4 +174,12 @@ main = G.playArrayWith Interpreter.run1
     (const render)
     (const id)
     (const id)
-    -}
+{-
+main :: IO ()
+main = do
+    let s :: Exp (ShortStack BVH)
+        s = stackPush emptyStack lol
+    let (T2 r s') = stackPop s
+    print r
+    return ()
+-}
