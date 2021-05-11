@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DataKinds #-} {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DataKinds #-} 
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE BlockArguments #-}
@@ -66,19 +67,17 @@ hitInfoToColor (TriangleHitInfo t u v ti) = ti & match \case
 transform :: Exp Float -> Exp Mat4f
 transform time = identity `mtranslate` V3_ (time/10) 0 0
 
-triangle :: Exp DIM1 -> Exp Triangle
-triangle (I1 i) = Triangle 
-            (V3_ 0   0 1)
-            (V3_ 1   0 1)
-            (V3_ 0.5 1 1)
+triangle :: Exp Float -> Exp DIM1 -> Exp Triangle
+triangle t (I1 i) = tmul (mkTranslation (V3_ (divF i (-8)) (t/10) 0)) $ 
+                  Triangle (V3_ 0 0 1) (V3_ 1 0 1) (V3_ 0.5 1 1)
 
 mkScene :: Exp Float -> Acc (Vector Triangle, Vector BVH)
 mkScene time = let
     ts :: Acc (Vector Triangle)
-    ts = A.generate (I1 5) triangle
+    ts = A.generate (I1 5) (triangle time)
 
     bvhs :: Acc (Vector BVH)
-    bvhs = A.use $ A.fromList (Z :. 2) [BVH_ True 1 1, BVH_ False 0 1]
+    bvhs = A.use $ A.fromList (Z :. 3) [BVH_ True 1 2, BVH_ False 0 1, BVH_ False 1 1]
 
     in T2 ts bvhs;
 
@@ -92,9 +91,12 @@ genRay x y =
     in Ray origin direction
 
 pnext1 :: Exp DIM1 -> Exp DIM1
-pnext1 (I1 i) = I1 (i+1)
+pnext1 = pnextn 1
 
-type ShortStack a = Stack ('NS 'NZ) a
+pnextn :: Exp Int -> Exp DIM1 -> Exp DIM1
+pnextn d (I1 i) = I1 (d+i)
+
+type ShortStack a = Stack ('NS ('NS ('NS ('NS ('NS 'NZ))))) a
 
 liftAcc :: (Elt a, Elt b) => (Exp a -> Exp b) -> (Acc (Scalar a) -> Acc (Scalar b))
 liftAcc f = unit . f . the
@@ -121,12 +123,10 @@ sceneIntersect (T2 triangles bvh) rays =
             f h ray = node & match \case
                 Node _ _ -> h
                 Leaf start count -> let
-                  offsetted (I1 n) = let nid = I1 (n+start) in rayIntersect nid (triangles!nid) ray
-
                   folder :: Exp TriangleHitInfo -> Exp DIM1 -> Exp TriangleHitInfo
-                  folder it i = closer it (offsetted i)
+                  folder it i = closer it (rayIntersect i (triangles!i) ray)
 
-                  in A.sfoldl folder h (constant Z) (A.generate (I1 count) id)
+                  in A.sfoldl folder h (constant Z) (A.generate (I1 count) (pnextn start))
 
             g :: Exp (ShortStack BVH) -> Exp (ShortStack BVH)
             g s = node & match \case
@@ -174,12 +174,18 @@ main = G.playArrayWith PTX.run1
     (const render)
     (const id)
     (const id)
+
 {-
 main :: IO ()
 main = do
     let s :: Exp (ShortStack BVH)
-        s = stackPush emptyStack lol
+        s = stackPush (stackPush emptyStack (Leaf 42 42)) (Leaf 69 69)
+    print s
     let (T2 r s') = stackPop s
+    print r
+    let (T2 r s'') = stackPop s'
+    print r
+    let (T2 r s''') = stackPop s''
     print r
     return ()
 -}

@@ -44,6 +44,9 @@ mtranslate (V4_
         (V4_ v20 v21 v22 (v23+tz))
         (V4_ v30 v31 v32 v33)
 
+mkTranslation :: Exp V3f -> Exp Mat4f
+mkTranslation = mtranslate identity
+
 data Triangle = Triangle_ V3f V3f V3f
     deriving (Generic, Elt, Show)
 

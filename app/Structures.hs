@@ -125,7 +125,7 @@ pilePush (SS nn) depth len prep x
   | Has <- pileHasElt (Proxy @a) nn
   , A.T2 p y <- prep  -- needs evidence from 'pileHasElt'
   = A.cond (len A.== A.constant depth)
-           (A.T2 (len + 1) (A.T2 p x))
+           (A.T2 len (A.T2 p x))
            (case pilePush nn (depth + 1) len p x of
               A.T2 len' p' -> A.T2 len' (A.T2 p' y))
 
@@ -155,7 +155,7 @@ stackPop' nn stackexpr
     | Has <- natTermIsKnown nn
     , Has <- pileHasElt (Proxy @a) nn
     , Stack len p <- stackexpr
-    , y <- pilePop @n @a nn 0 0 p
+    , y <- pilePop @n @a nn 0 (len-1) p
     = A.T2 y (Stack (len-1) p)
 
 stackPop :: forall n a. (A.Elt a, KnownNat n) => A.Exp (Stack n a) -> A.Exp (a, Stack n a)
