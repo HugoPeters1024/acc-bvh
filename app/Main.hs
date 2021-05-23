@@ -99,6 +99,16 @@ type ShortStack a = Stack ('NS ('NS ('NS ('NS ('NS 'NZ))))) a
 liftAcc :: (Elt a, Elt b) => (Exp a -> Exp b) -> (Acc (Scalar a) -> Acc (Scalar b))
 liftAcc f = unit . f . the
 
+rangeLoop :: (Elt a) => Exp (Int, Int) -> (Exp Int -> Exp a -> Exp a) -> Exp a -> Exp a
+rangeLoop (T2 start end) f initial = let
+
+    whileCond (T2 i _) = i A.< end
+
+    it (T2 i s) = T2 (i+1) (f i s)
+
+    in A.snd $ A.while whileCond it (T2 start initial)
+
+
 type WState = Exp (TriangleHitInfo, ShortStack BVH)
 
 sceneIntersect :: Scene -> Acc (Vector Ray) -> Acc (Vector TriangleHitInfo)
@@ -127,14 +137,10 @@ sceneIntersect (T2 triangles bvh) rays =
                   whileCond :: Exp (Int, TriangleHitInfo) -> Exp Bool
                   whileCond (T2 i _) = i A.< (start + count)
 
-                  itWhile :: Exp (Int, TriangleHitInfo) -> Exp (Int, TriangleHitInfo)
-                  itWhile (T2 i hi) = let
-                      isect :: Exp TriangleHitInfo -> Exp DIM1 -> Exp TriangleHitInfo
-                      isect it i = closer it (rayIntersect i (triangles!i) ray)
+                  itWhile :: Exp Int -> Exp TriangleHitInfo -> Exp TriangleHitInfo
+                  itWhile i hi = let di = I1 i in closer hi (rayIntersect di (triangles!di) ray)
 
-                      in T2 (i+1) (isect hi (I1 i))
-
-                  in T2 (A.snd $ A.while whileCond itWhile (T2 start hi)) poppedstack
+                  in T2 (rangeLoop (T2 start (start+count)) itWhile hi) poppedstack
 
                 Node l r bbox -> let
                   bb = slabTest ray bbox hi
