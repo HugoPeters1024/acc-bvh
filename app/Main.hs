@@ -37,24 +37,20 @@ import Structures
 
 type Scene = Acc (Vector Triangle, Vector BVH)
 
-data BVH = BVH_ Bool Int Int
+bbox :: BB
+bbox = BB_ (V3.V3 (0) (0) (-1)) (V3.V3 100 100 100)
+
+data BVH = BVH_ Bool Int Int BB
     deriving (Generic, Elt, Show)
 
-pattern BVH :: Exp Bool -> Exp Int -> Exp Int -> Exp BVH
-pattern BVH leaf l r = A.Pattern (leaf, l, r)
+pattern BVH :: Exp Bool -> Exp Int -> Exp Int -> Exp BB -> Exp BVH
+pattern BVH leaf l r bb = A.Pattern (leaf, l, r, bb)
 
-pattern Leaf :: Exp Int -> Exp Int -> Exp BVH
-pattern Leaf l r = BVH False_ l r
+pattern Leaf :: Exp Int -> Exp Int -> Exp BB -> Exp BVH
+pattern Leaf l r bb = BVH False_ l r bb
 
-pattern Node :: Exp Int -> Exp Int -> Exp BVH
-pattern Node l r = BVH True_ l r
-
-isLeaf :: Exp BVH -> Exp Bool
-isLeaf (Leaf _ _) = True_
-isLeaf (Node _ _) = False_
-
-lol :: Exp BVH
-lol = Node 4 4
+pattern Node :: Exp Int -> Exp Int -> Exp BB -> Exp BVH
+pattern Node l r bb = BVH True_ l r bb
 
 vecToColor :: Exp V3f -> Exp G.Colour
 vecToColor (V3_ x y z) = G.rgba x y z 1
@@ -76,8 +72,10 @@ mkScene time = let
     ts :: Acc (Vector Triangle)
     ts = A.generate (I1 5) (triangle time)
 
+    bvhlist = [BVH_ True 1 2 bbox, BVH_ True 3 4 bbox, BVH_ False 0 1 bbox, BVH_ False 1 1 bbox, BVH_ False 2 2 bbox]
+
     bvhs :: Acc (Vector BVH)
-    bvhs = A.use $ A.fromList (Z :. 3) [BVH_ True 1 2, BVH_ False 0 1, BVH_ False 1 1]
+    bvhs = A.use $ A.fromList (Z :. P.length bvhlist) bvhlist
 
     in T2 ts bvhs;
 
@@ -101,7 +99,7 @@ type ShortStack a = Stack ('NS ('NS ('NS ('NS ('NS 'NZ))))) a
 liftAcc :: (Elt a, Elt b) => (Exp a -> Exp b) -> (Acc (Scalar a) -> Acc (Scalar b))
 liftAcc f = unit . f . the
 
-type WState = Acc (Vector TriangleHitInfo, Scalar (ShortStack BVH))
+type WState = Exp (TriangleHitInfo, ShortStack BVH)
 
 sceneIntersect :: Scene -> Acc (Vector Ray) -> Acc (Vector TriangleHitInfo)
 sceneIntersect (T2 triangles bvh) rays =
@@ -109,36 +107,44 @@ sceneIntersect (T2 triangles bvh) rays =
         startStack :: Exp (ShortStack BVH)
         startStack = stackPush emptyStack (bvh!I1 0)
 
+        startHit :: Exp TriangleHitInfo
+        startHit = TriangleHitInfo 10000 0 0 Nothing_
+
         initialWhileState :: WState
-        initialWhileState = lift (A.map (const (TriangleHitInfo 0 0 0 Nothing_)) rays, unit startStack)
+        initialWhileState = T2 startHit startStack
 
-        whileCond :: WState -> Acc (Scalar Bool)
-        whileCond (T2 _ c) = A.map (A.not . stackIsEmpty) c 
+        whileCond :: Exp (TriangleHitInfo, ShortStack BVH) -> Exp Bool
+        whileCond (T2 _ stack) = A.not (stackIsEmpty stack)
 
-        itWhile :: WState -> WState
-        itWhile (T2 hs s) = let
-            T2 node news = stackPop $ the s
+        itWhile :: Exp Ray -> Exp (TriangleHitInfo, ShortStack BVH) -> Exp (TriangleHitInfo, ShortStack BVH)
+        itWhile ray (T2 hi stack) = let
 
-            f :: Exp TriangleHitInfo -> Exp Ray -> Exp TriangleHitInfo
-            f h ray = node & match \case
-                Node _ _ -> h
-                Leaf start count -> let
-                  folder :: Exp TriangleHitInfo -> Exp DIM1 -> Exp TriangleHitInfo
-                  folder it i = closer it (rayIntersect i (triangles!i) ray)
+            T2 node poppedstack = stackPop stack
 
-                  in A.sfoldl folder h (constant Z) (A.generate (I1 count) (pnextn start))
+            newstate :: Exp (TriangleHitInfo, ShortStack BVH)
+            newstate = node & match \case
+                Leaf start count _ -> let
+                  whileCond :: Exp (Int, TriangleHitInfo) -> Exp Bool
+                  whileCond (T2 i _) = i A.< (start + count)
 
-            g :: Exp (ShortStack BVH) -> Exp (ShortStack BVH)
-            g s = node & match \case
-                Leaf _ _ -> s 
-                Node l r -> stackPush (stackPush s (bvh!I1 l)) (bvh!I1 r) 
+                  itWhile :: Exp (Int, TriangleHitInfo) -> Exp (Int, TriangleHitInfo)
+                  itWhile (T2 i hi) = let
+                      isect :: Exp TriangleHitInfo -> Exp DIM1 -> Exp TriangleHitInfo
+                      isect it i = closer it (rayIntersect i (triangles!i) ray)
 
-            newhs :: Acc (Vector TriangleHitInfo)
-            newhs = A.zipWith f hs rays
+                      in T2 (i+1) (isect hi (I1 i))
 
-            in T2 newhs (unit (g news))
+                  in T2 (A.snd $ A.while whileCond itWhile (T2 start hi)) poppedstack
 
-        in A.afst $ A.awhile whileCond itWhile initialWhileState
+                Node l r bbox -> let
+                  bb = slabTest ray bbox hi
+                  newstack = stackPush (stackPush poppedstack (bvh!I1 l)) (bvh!I1 r)
+                  in T2 hi (bb ? (newstack, poppedstack))
+
+
+            in stackIsEmpty stack A.? (T2 hi stack, newstate)
+
+        in A.map (A.fst . \ray -> A.while whileCond (itWhile ray) initialWhileState) rays
 
 
 rayIntersect :: Exp DIM1 -> Exp Triangle -> Exp Ray -> Exp TriangleHitInfo

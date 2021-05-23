@@ -17,6 +17,25 @@ import Data.Array.Accelerate.Linear.Metric
 type V3f = V3 Float
 type Mat4f = M44 Float
 
+zipComponents :: (Exp Float -> Exp Float -> Exp Float) -> Exp V3f -> Exp V3f -> Exp V3f
+zipComponents f (V3_ a0 a1 a2) (V3_ b0 b1 b2) = V3_ (f a0 b0) (f a1 b1) (f a2 b2)
+
+min3f :: Exp V3f -> Exp V3f -> Exp V3f
+min3f = zipComponents min
+
+max3f :: Exp V3f -> Exp V3f -> Exp V3f
+max3f = zipComponents max
+
+
+foldComponents :: (Exp Float -> Exp Float -> Exp Float) -> Exp V3f -> Exp Float
+foldComponents f (V3_ v0 v1 v2) = f v0 (f v1 v2)
+
+maxComponent :: Exp V3f -> Exp Float
+maxComponent = foldComponents max
+
+minComponent :: Exp V3f -> Exp Float
+minComponent = foldComponents min
+
 class Transformable a where
     tmul :: Exp Mat4f -> Exp a -> Exp a
 
@@ -75,6 +94,10 @@ closer a@(TriangleHitInfo ta _ _ ia) b@(TriangleHitInfo tb _ _ ib) = T2 ia ib & 
     (T2 _ Nothing_) -> a
     (T2 (Just_ _) (Just_ _)) -> ta A.< tb A.? (a , b)
 
+setT :: Exp Float -> Exp TriangleHitInfo -> Exp TriangleHitInfo
+setT t (TriangleHitInfo _ a b c) = TriangleHitInfo t a b c
+
+
 
 rayTriangleIsect :: Exp Triangle -> Exp Ray -> Exp (Maybe (Float, Float, Float))
 rayTriangleIsect (Triangle v0 v1 v2) (Ray o d) = 
@@ -94,3 +117,24 @@ rayTriangleIsect (Triangle v0 v1 v2) (Ray o d) =
         t = (v0v2 `dot` qvec) * invDet
     in (P.abs det > 0.0001 && t > 0 && u > 0 && v > 0 && u + v < 1) 
        ? (Just_ (T3 t u v), Nothing_)
+
+data BB = BB_ V3f V3f
+    deriving (Generic, Elt, Show)
+
+pattern BB :: Exp V3f -> Exp V3f -> Exp BB
+pattern BB vmin vmax = A.Pattern (vmin, vmax)
+
+slabTest :: Exp Ray -> Exp BB -> Exp TriangleHitInfo -> Exp Bool
+slabTest (Ray o d) (BB vmin vmax) (TriangleHitInfo t _ _ _) = let
+    invd :: Exp V3f
+    invd = 1.0 / o
+
+    t0 = (vmin - o) * invd
+    t1 = (vmax - o) * invd
+    min3 = min3f t0 t1
+    max3 = max3f t0 t1
+    tmin = maxComponent min3
+    tmax = minComponent max3
+    in (tmax A.>= max 0 tmin) A.&& (tmin A.< t)
+
+
