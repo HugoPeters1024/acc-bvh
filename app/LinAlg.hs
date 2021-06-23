@@ -63,6 +63,20 @@ mtranslate (V4_
         (V4_ v20 v21 v22 (v23+tz))
         (V4_ v30 v31 v32 v33)
 
+mkRotationY :: Exp Float -> Exp Mat4f
+mkRotationY r = V4_
+    (V4_ (cos r)    0 (sin r) 0)
+    (V4_ 0          1 0       0)
+    (V4_ (-(sin r)) 0 (cos r) 1)
+    (V4_ 0          0 0       1)
+
+mkRotationZ :: Exp Float -> Exp Mat4f
+mkRotationZ r = V4_
+    (V4_ (cos r)    (-(sin r)) 0 0)
+    (V4_ (sin r)    (cos r)    0 0)
+    (V4_ 0          0          1 0)
+    (V4_ 0          0          0 1)
+
 mkTranslation :: Exp V3f -> Exp Mat4f
 mkTranslation = mtranslate identity
 
@@ -71,6 +85,12 @@ data Triangle = Triangle_ V3f V3f V3f
 
 pattern Triangle :: Exp V3f -> Exp V3f -> Exp V3f -> Exp Triangle
 pattern Triangle v0 v1 v2 = A.Pattern (v0, v1, v2)
+
+getNormal :: Exp Triangle -> Exp V3f
+getNormal (Triangle v0 v1 v2) = let
+    edge1 = v1 - v0
+    edge2 = v2 - v0
+    in normalize $ V3.cross edge1 edge2
 
 instance Transformable V3f where
   tmul m (V3_ x y z) = let (V4_ nx ny nz _) = m !* V4_ x y z 1 in V3_ nx ny nz
@@ -96,7 +116,6 @@ closer a@(TriangleHitInfo ta _ _ ia) b@(TriangleHitInfo tb _ _ ib) = T2 ia ib & 
 
 setT :: Exp Float -> Exp TriangleHitInfo -> Exp TriangleHitInfo
 setT t (TriangleHitInfo _ a b c) = TriangleHitInfo t a b c
-
 
 
 rayTriangleIsect :: Exp Triangle -> Exp Ray -> Exp (Maybe (Float, Float, Float))
@@ -138,3 +157,14 @@ slabTest (Ray o d) (BB vmin vmax) (TriangleHitInfo t _ _ _) = let
     in (tmax A.>= max 0 tmin) A.&& (tmin A.< t)
 
 
+data BVH = BVH_ Bool Int Int BB
+    deriving (Generic, Elt, Show)
+
+pattern BVH :: Exp Bool -> Exp Int -> Exp Int -> Exp BB -> Exp BVH
+pattern BVH leaf l r bb = A.Pattern (leaf, l, r, bb)
+
+pattern Leaf :: Exp Int -> Exp Int -> Exp BB -> Exp BVH
+pattern Leaf l r bb = BVH False_ l r bb
+
+pattern Node :: Exp Int -> Exp Int -> Exp BB -> Exp BVH
+pattern Node l r bb = BVH True_ l r bb

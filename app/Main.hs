@@ -23,6 +23,7 @@ import Data.Array.Accelerate.Interpreter as Interpreter
 import Data.Array.Accelerate as A
 import Data.Array.Accelerate.Error as A
 import Data.Array.Accelerate.Debug as A
+import Data.Array.Accelerate.IO.Data.Vector.Generic
 import qualified Data.Array.Accelerate.Unsafe as A
 import qualified Graphics.Gloss.Accelerate.Raster.Array as G
 import Data.Array.Accelerate.Linear.V3 as V3
@@ -32,61 +33,67 @@ import Control.Monad.Trans.Reader
 import Control.Monad.Identity
 import GHC.Generics
 import GHC.TypeNats
+import qualified Data.Vector as V
 
 import Structures
+import Models
 
 type Scene = Acc (Vector Triangle, Vector BVH)
-
-bbox :: BB
-bbox = BB_ (V3.V3 (0) (0) (-1)) (V3.V3 100 100 100)
-
-data BVH = BVH_ Bool Int Int BB
-    deriving (Generic, Elt, Show)
-
-pattern BVH :: Exp Bool -> Exp Int -> Exp Int -> Exp BB -> Exp BVH
-pattern BVH leaf l r bb = A.Pattern (leaf, l, r, bb)
-
-pattern Leaf :: Exp Int -> Exp Int -> Exp BB -> Exp BVH
-pattern Leaf l r bb = BVH False_ l r bb
-
-pattern Node :: Exp Int -> Exp Int -> Exp BB -> Exp BVH
-pattern Node l r bb = BVH True_ l r bb
 
 vecToColor :: Exp V3f -> Exp G.Colour
 vecToColor (V3_ x y z) = G.rgba x y z 1
 
-hitInfoToColor :: Exp TriangleHitInfo -> Exp G.Colour
-hitInfoToColor (TriangleHitInfo t u v ti) = ti & match \case 
+hitInfoToColor :: Scene -> Exp TriangleHitInfo -> Exp G.Colour
+hitInfoToColor (T2 triangles _) (TriangleHitInfo t u v ti) = ti & match \case 
     Nothing_ -> G.rgba 0 0 0 0
-    Just_ _  -> G.rgba u v 0 0
+    Just_ i  -> let
+        triangle = triangles A.! i
+        normal = getNormal triangle
+        angle = dot normal (V3.V3_ 0 1 0)
+        in G.rgba angle angle angle angle
 
 transform :: Exp Float -> Exp Mat4f
 transform time = identity `mtranslate` V3_ (time/10) 0 0
 
-triangle :: Exp Float -> Exp DIM1 -> Exp Triangle
-triangle t (I1 i) = tmul (mkTranslation (V3_ (divF i (-8)) (t/10) 0)) $ 
-                  Triangle (V3_ 0 0 1) (V3_ 1 0 1) (V3_ 0.5 1 1)
+cube :: Vector Triangle
+cube = A.fromList (Z :. 12)
+  [ Triangle_ (V3.V3 (-1.0) (-1.0) (-1.0)) (V3.V3 (-1.0) (-1.0) ( 1.0)) (V3.V3 (-1.0) ( 1.0) ( 1.0)) 
+  , Triangle_ (V3.V3 ( 1.0) ( 1.0) (-1.0)) (V3.V3 (-1.0) (-1.0) (-1.0)) (V3.V3 (-1.0) ( 1.0) (-1.0)) 
+  , Triangle_ (V3.V3 ( 1.0) (-1.0) ( 1.0)) (V3.V3 (-1.0) (-1.0) (-1.0)) (V3.V3 ( 1.0) (-1.0) (-1.0)) 
+  , Triangle_ (V3.V3 ( 1.0) ( 1.0) (-1.0)) (V3.V3 ( 1.0) (-1.0) (-1.0)) (V3.V3 (-1.0) (-1.0) (-1.0)) 
+  , Triangle_ (V3.V3 (-1.0) (-1.0) (-1.0)) (V3.V3 (-1.0) ( 1.0) ( 1.0)) (V3.V3 (-1.0) ( 1.0) (-1.0)) 
+  , Triangle_ (V3.V3 ( 1.0) (-1.0) ( 1.0)) (V3.V3 (-1.0) (-1.0) ( 1.0)) (V3.V3 (-1.0) (-1.0) (-1.0)) 
+  , Triangle_ (V3.V3 (-1.0) ( 1.0) ( 1.0)) (V3.V3 (-1.0) (-1.0) ( 1.0)) (V3.V3 ( 1.0) (-1.0) ( 1.0)) 
+  , Triangle_ (V3.V3 ( 1.0) ( 1.0) ( 1.0)) (V3.V3 ( 1.0) (-1.0) (-1.0)) (V3.V3 ( 1.0) ( 1.0) (-1.0)) 
+  , Triangle_ (V3.V3 ( 1.0) (-1.0) (-1.0)) (V3.V3 ( 1.0) ( 1.0) ( 1.0)) (V3.V3 ( 1.0) (-1.0) ( 1.0)) 
+  , Triangle_ (V3.V3 ( 1.0) ( 1.0) ( 1.0)) (V3.V3 ( 1.0) ( 1.0) (-1.0)) (V3.V3 (-1.0) ( 1.0) (-1.0)) 
+  , Triangle_ (V3.V3 ( 1.0) ( 1.0) ( 1.0)) (V3.V3 (-1.0) ( 1.0) (-1.0)) (V3.V3 (-1.0) ( 1.0) ( 1.0)) 
+  , Triangle_ (V3.V3 ( 1.0) ( 1.0) ( 1.0)) (V3.V3 (-1.0) ( 1.0) ( 1.0)) (V3.V3 ( 1.0) (-1.0) ( 1.0))]
 
-mkScene :: Exp Float -> Acc (Vector Triangle, Vector BVH)
-mkScene time = let
-    ts :: Acc (Vector Triangle)
-    ts = A.generate (I1 5) (triangle time)
-
-    bvhlist = [BVH_ True 1 2 bbox, BVH_ True 3 4 bbox, BVH_ False 0 1 bbox, BVH_ False 1 1 bbox, BVH_ False 2 2 bbox]
-
-    bvhs :: Acc (Vector BVH)
-    bvhs = A.use $ A.fromList (Z :. P.length bvhlist) bvhlist
-
-    in T2 ts bvhs;
+loadScene :: IO Scene
+loadScene = do
+    triangles <- loadTriangles "teapot.obj"
+    putStrLn $ "nr triangles: " <> show (V.length triangles)
+    let bvh = constructBVH triangles
+    putStrLn $ "nr bvh nodes: " <> show (V.length bvh)
+    print triangles
+    print cube
+    pure $ T2 (toAcc triangles) (toAcc bvh)
 
 
-genRay :: Exp Float -> Exp Float -> Exp Ray
-genRay x y = 
+genRay :: Exp Float -> Exp Float -> Exp Float -> Exp Ray
+genRay time x y = 
     let
-        target = V3_ x y 0
-        origin = V3_ 0.5 0.5 (-1)
-        direction = normalize (target - origin)
-    in Ray origin direction
+        eye = V3_ 0 (time * 0.2) (-6)
+        viewDir = V3_ 0 0 1
+        dist = 1.0
+        screenCenter = eye + viewDir * dist
+        screenHorz = V3.cross (V3_ 0 1 0) viewDir
+        screenVert = V3.cross screenHorz viewDir
+        target = screenCenter + (screenHorz A.* 2 A.* V3_ x x x) + (screenVert A.* 2 A.* V3_ y y y) - screenHorz - screenVert
+        --target = V3_ x y (-9)
+        direction = normalize (target - eye)
+    in Ray eye direction
 
 pnext1 :: Exp DIM1 -> Exp DIM1
 pnext1 = pnextn 1
@@ -101,11 +108,8 @@ liftAcc f = unit . f . the
 
 rangeLoop :: (Elt a) => Exp (Int, Int) -> (Exp Int -> Exp a -> Exp a) -> Exp a -> Exp a
 rangeLoop (T2 start end) f initial = let
-
     whileCond (T2 i _) = i A.< end
-
     it (T2 i s) = T2 (i+1) (f i s)
-
     in A.snd $ A.while whileCond it (T2 start initial)
 
 
@@ -158,8 +162,8 @@ rayIntersect i triangle ray = rayTriangleIsect triangle ray & match \case
     Nothing_ -> TriangleHitInfo 0 0 0 Nothing_
     Just_ (T3 t u v) -> TriangleHitInfo t u v (Just_ i)
 
-initialRays :: Acc (Vector Ray)
-initialRays = A.flatten $ A.generate (I2 640 480) (\(I2 y x) -> genRay (divF x 640) (divF y 480))
+initialRays :: Exp Float -> Acc (Vector Ray)
+initialRays time = A.flatten $ A.generate (I2 640 480) (\(I2 y x) -> genRay time (divF x 640) (divF y 480))
 
 white :: Exp G.Colour
 white = G.rgba 1 1 1 1
@@ -167,37 +171,16 @@ white = G.rgba 1 1 1 1
 divF :: Exp Int -> Exp Int -> Exp Float
 divF a b = A.fromIntegral a / A.fromIntegral b
 
-render :: Acc (Array DIM2 G.Colour)
-render = let
-        rays = initialRays
-        scene = mkScene 0
-        pixels = A.map hitInfoToColor (sceneIntersect scene rays)
-     in reshape (I2 640 480) pixels
+render :: Scene -> Exp Float -> Acc (Array DIM2 G.Colour)
+render scene time = let
+        rays = initialRays time
+        pixels = A.map (hitInfoToColor scene) (sceneIntersect scene rays)
+        in reshape (I2 640 480) pixels
 
     
 
 main :: IO ()
-main = G.playArrayWith PTX.run1
-    (G.InWindow "BVH" (640, 480) (10,10))
-    (1,1)
-    60
-    ()
-    (const ())
-    (const render)
-    (const id)
-    (const id)
-
-{-
-main :: IO ()
 main = do
-    let s :: Exp (ShortStack BVH)
-        s = stackPush (stackPush emptyStack (Leaf 42 42)) (Leaf 69 69)
-    print s
-    let (T2 r s') = stackPop s
-    print r
-    let (T2 r s'') = stackPop s'
-    print r
-    let (T2 r s''') = stackPop s''
-    print r
-    return ()
--}
+    scene <- loadScene
+    G.animateArrayWith PTX.run1 (G.InWindow "BVH" (640, 480) (10,10)) (1,1) (render scene)
+

@@ -21,6 +21,7 @@ maintainer:         hpeters1024@gmail.com
 -- category:
 extra-source-files: CHANGELOG.md
 
+
 executable acc-structure
     main-is:          Main.hs
     ghc-options: -threaded -fplugin GHC.TypeLits.KnownNat.Solver
@@ -28,12 +29,15 @@ executable acc-structure
 
     -- Modules included in this executable, other than Main.
     other-modules: LinAlg
-                   Structures
+                 , Structures
+                 , Models
+
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
     build-depends:    base ^>=4.14.1.0
                     , accelerate
+                    , accelerate-io-vector
                     , gloss-raster-accelerate
                     , accelerate-llvm-ptx
                     , gloss
@@ -45,5 +49,7 @@ executable acc-structure
                     , data-default
                     , ghc-prim
                     , ghc-typelits-knownnat
+                    , wavefront
+                    , vector
     hs-source-dirs:   app
     default-language: Haskell2010
