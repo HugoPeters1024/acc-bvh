@@ -45,7 +45,7 @@ vecToColor (V3_ x y z) = G.rgba x y z 1
 
 hitInfoToColor :: Scene -> Exp TriangleHitInfo -> Exp G.Colour
 hitInfoToColor (T2 triangles _) (TriangleHitInfo t u v ti) = ti & match \case 
-    Nothing_ -> G.rgba 0 0 0 0
+    Nothing_ -> G.rgba 0.1 0.2 0.2 0
     Just_ i  -> let
         triangle = triangles A.! i
         normal = getNormal triangle
@@ -56,7 +56,7 @@ transform :: Exp Float -> Exp Mat4f
 transform time = identity `mtranslate` V3_ (time/10) 0 0
 
 cube :: Vector Triangle
-cube = A.fromList (Z :. 12)
+cube = A.fromList (A.Z :. 12)
   [ Triangle_ (V3.V3 (-1.0) (-1.0) (-1.0)) (V3.V3 (-1.0) (-1.0) ( 1.0)) (V3.V3 (-1.0) ( 1.0) ( 1.0)) 
   , Triangle_ (V3.V3 ( 1.0) ( 1.0) (-1.0)) (V3.V3 (-1.0) (-1.0) (-1.0)) (V3.V3 (-1.0) ( 1.0) (-1.0)) 
   , Triangle_ (V3.V3 ( 1.0) (-1.0) ( 1.0)) (V3.V3 (-1.0) (-1.0) (-1.0)) (V3.V3 ( 1.0) (-1.0) (-1.0)) 
@@ -74,11 +74,9 @@ loadScene :: IO Scene
 loadScene = do
     triangles <- loadTriangles "teapot.obj"
     putStrLn $ "nr triangles: " <> show (V.length triangles)
-    let bvh = constructBVH triangles
+    let (bvh, sortedTriangles) = constructBVH triangles
     putStrLn $ "nr bvh nodes: " <> show (V.length bvh)
-    print triangles
-    print cube
-    pure $ T2 (toAcc triangles) (toAcc bvh)
+    pure $ T2 (toAcc sortedTriangles) (toAcc bvh)
 
 
 genRay :: Exp Float -> Exp Float -> Exp Float -> Exp Ray
@@ -101,7 +99,7 @@ pnext1 = pnextn 1
 pnextn :: Exp Int -> Exp DIM1 -> Exp DIM1
 pnextn d (I1 i) = I1 (d+i)
 
-type ShortStack a = Stack ('NS ('NS ('NS ('NS ('NS 'NZ))))) a
+type ShortStack a = Stack ('NS ('NS ('NS ('NS ('NS ('NS ('NS 'NZ))))))) a
 
 liftAcc :: (Elt a, Elt b) => (Exp a -> Exp b) -> (Acc (Scalar a) -> Acc (Scalar b))
 liftAcc f = unit . f . the
@@ -163,7 +161,7 @@ rayIntersect i triangle ray = rayTriangleIsect triangle ray & match \case
     Just_ (T3 t u v) -> TriangleHitInfo t u v (Just_ i)
 
 initialRays :: Exp Float -> Acc (Vector Ray)
-initialRays time = A.flatten $ A.generate (I2 640 480) (\(I2 y x) -> genRay time (divF x 640) (divF y 480))
+initialRays time = A.flatten $ A.generate (I2 480 640) (\(I2 y x) -> genRay time (divF x 640) (divF y 480))
 
 white :: Exp G.Colour
 white = G.rgba 1 1 1 1
@@ -175,7 +173,7 @@ render :: Scene -> Exp Float -> Acc (Array DIM2 G.Colour)
 render scene time = let
         rays = initialRays time
         pixels = A.map (hitInfoToColor scene) (sceneIntersect scene rays)
-        in reshape (I2 640 480) pixels
+        in reshape (I2 480 640) pixels
 
     
 

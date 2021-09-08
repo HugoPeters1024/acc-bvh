@@ -26,7 +26,6 @@ min3f = zipComponents min
 max3f :: Exp V3f -> Exp V3f -> Exp V3f
 max3f = zipComponents max
 
-
 foldComponents :: (Exp Float -> Exp Float -> Exp Float) -> Exp V3f -> Exp Float
 foldComponents f (V3_ v0 v1 v2) = f v0 (f v1 v2)
 
@@ -154,7 +153,7 @@ slabTest (Ray o d) (BB vmin vmax) (TriangleHitInfo t _ _ _) = let
     max3 = max3f t0 t1
     tmin = maxComponent min3
     tmax = minComponent max3
-    in (tmax A.>= max 0 tmin) A.&& (tmin A.< t)
+    in True_ --(tmax A.>= max 0 tmin) A.&& (tmin A.< t)
 
 
 data BVH = BVH_ Bool Int Int BB

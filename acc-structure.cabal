@@ -51,5 +51,6 @@ executable acc-structure
                     , ghc-typelits-knownnat
                     , wavefront
                     , vector
+                    , vector-algorithms
     hs-source-dirs:   app
     default-language: Haskell2010
