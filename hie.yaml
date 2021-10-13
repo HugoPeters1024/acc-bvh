@@ -11,3 +11,9 @@ cradle:
 
     - path: "./app/Models.hs"
       component: "acc-structure:exe:acc-structure"
+
+    - path: "./app/Stack.hs"
+      component: "acc-structure:exe:acc-structure"
+
+    - path: "./app/Scratch.hs"
+      component: "acc-structure:exe:acc-structure"

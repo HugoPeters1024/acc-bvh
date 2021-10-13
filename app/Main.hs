@@ -11,6 +11,7 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Main where
 
 
@@ -22,7 +23,7 @@ import Data.Array.Accelerate.LLVM.PTX as PTX
 import Data.Array.Accelerate.Interpreter as Interpreter
 import Data.Array.Accelerate as A
 import Data.Array.Accelerate.Error as A
-import Data.Array.Accelerate.Debug as A
+--import Data.Array.Accelerate.Debug as A
 import Data.Array.Accelerate.IO.Data.Vector.Generic
 import qualified Data.Array.Accelerate.Unsafe as A
 import qualified Graphics.Gloss.Accelerate.Raster.Array as G
@@ -175,7 +176,6 @@ render scene time = let
         pixels = A.map (hitInfoToColor scene) (sceneIntersect scene rays)
         in reshape (I2 480 640) pixels
 
-    
 
 main :: IO ()
 main = do

@@ -9,6 +9,8 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE MagicHash #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Structures (
     Nat(..), NatTerm(..), KnownNat(..),
@@ -30,6 +32,7 @@ import qualified Data.Array.Accelerate.Representation.Tag as AI
 import qualified Data.Array.Accelerate.Representation.Type as AI
 
 import Data.Proxy
+
 
 data Nat = NZ | NS Nat
   deriving (Show)

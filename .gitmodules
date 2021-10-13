@@ -1,0 +1,9 @@
+[submodule "accelerate"]
+	path = accelerate
+	url = https://github.com/AccelerateHS/accelerate
+[submodule "accelerate-llvm"]
+	path = accelerate-llvm
+	url = https://github.com/AccelerateHS/accelerate-llvm
+[submodule "accelerate-io"]
+	path = accelerate-io
+	url = https://github.com/AccelerateHS/accelerate-io

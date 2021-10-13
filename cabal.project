@@ -1,2 +1,9 @@
 packages: .
         , ./wavefront-0.7.1.4
+        , ./accelerate
+        , ./accelerate-llvm/accelerate-llvm-ptx
+        , ./accelerate-llvm/accelerate-llvm-native
+        , ./accelerate-llvm/accelerate-llvm
+        , ./accelerate-io/accelerate-io-vector
+
+-- Hey maybe try compling accelerate with debug flags

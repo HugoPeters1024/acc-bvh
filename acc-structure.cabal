@@ -31,11 +31,13 @@ executable acc-structure
     other-modules: LinAlg
                  , Structures
                  , Models
+                 , Stack
+                 , Scratch
 
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
-    build-depends:    base ^>=4.14.1.0
+    build-depends:    base
                     , accelerate
                     , accelerate-io-vector
                     , gloss-raster-accelerate
