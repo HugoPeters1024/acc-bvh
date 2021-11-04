@@ -32,7 +32,6 @@ executable acc-structure
                  , Structures
                  , Models
                  , Stack
-                 , Scratch
 
 
     -- LANGUAGE extensions used by modules in this package.

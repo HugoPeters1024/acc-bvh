@@ -7,11 +7,12 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DataKinds #-} 
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE GADTs #-}
 module Main where
 
 
@@ -36,8 +37,8 @@ import GHC.Generics
 import GHC.TypeNats
 import qualified Data.Vector as V
 
-import Structures
 import Models
+import Stack
 
 type Scene = Acc (Vector Triangle, Vector BVH)
 
@@ -100,8 +101,6 @@ pnext1 = pnextn 1
 pnextn :: Exp Int -> Exp DIM1 -> Exp DIM1
 pnextn d (I1 i) = I1 (d+i)
 
-type ShortStack a = Stack ('NS ('NS ('NS ('NS ('NS ('NS ('NS 'NZ))))))) a
-
 liftAcc :: (Elt a, Elt b) => (Exp a -> Exp b) -> (Acc (Scalar a) -> Acc (Scalar b))
 liftAcc f = unit . f . the
 
@@ -112,13 +111,13 @@ rangeLoop (T2 start end) f initial = let
     in A.snd $ A.while whileCond it (T2 start initial)
 
 
-type WState = Exp (TriangleHitInfo, ShortStack BVH)
+type WState = Exp (TriangleHitInfo, Stack 20 Int)
 
 sceneIntersect :: Scene -> Acc (Vector Ray) -> Acc (Vector TriangleHitInfo)
 sceneIntersect (T2 triangles bvh) rays =
     let
-        startStack :: Exp (ShortStack BVH)
-        startStack = stackPush emptyStack (bvh!I1 0)
+        startStack :: Exp (Stack 20 Int)
+        startStack = stackPush emptyStack 0
 
         startHit :: Exp TriangleHitInfo
         startHit = TriangleHitInfo 10000 0 0 Nothing_
@@ -126,15 +125,15 @@ sceneIntersect (T2 triangles bvh) rays =
         initialWhileState :: WState
         initialWhileState = T2 startHit startStack
 
-        whileCond :: Exp (TriangleHitInfo, ShortStack BVH) -> Exp Bool
+        whileCond :: Exp (TriangleHitInfo, Stack 20 Int) -> Exp Bool
         whileCond (T2 _ stack) = A.not (stackIsEmpty stack)
 
-        itWhile :: Exp Ray -> Exp (TriangleHitInfo, ShortStack BVH) -> Exp (TriangleHitInfo, ShortStack BVH)
+        itWhile :: Exp Ray -> Exp (TriangleHitInfo, Stack 20 Int) -> Exp (TriangleHitInfo, Stack 20 Int)
         itWhile ray (T2 hi stack) = let
 
-            T2 node poppedstack = stackPop stack
+            T2 poppedstack node :: Exp (Stack 20 Int, BVH) = let T2 stack' nodeIdx = stackPop stack in T2 stack' (bvh ! I1 nodeIdx)
 
-            newstate :: Exp (TriangleHitInfo, ShortStack BVH)
+            newstate :: Exp (TriangleHitInfo, Stack 20 Int)
             newstate = node & match \case
                 Leaf start count _ -> let
                   whileCond :: Exp (Int, TriangleHitInfo) -> Exp Bool
@@ -147,7 +146,7 @@ sceneIntersect (T2 triangles bvh) rays =
 
                 Node l r bbox -> let
                   bb = slabTest ray bbox hi
-                  newstack = stackPush (stackPush poppedstack (bvh!I1 l)) (bvh!I1 r)
+                  newstack :: Exp (Stack 20 Int) = stackPush (stackPush poppedstack l) r
                   in T2 hi (bb ? (newstack, poppedstack))
 
 
@@ -176,9 +175,19 @@ render scene time = let
         pixels = A.map (hitInfoToColor scene) (sceneIntersect scene rays)
         in reshape (I2 480 640) pixels
 
+testHead :: (KnownNat n, VecElt a) => Exp (Vec n a) -> Exp (Vec n a, a)
+testHead v = let x :: Exp Int = 0 in T2 v (vecIndex v x)
+
+runExp :: Elt e => Exp e -> e
+runExp e = indexArray (PTX.run (generate I0 (const e))) A.Z
+--runExp e = indexArray (PTX.run (unit e)) A.Z
 
 main :: IO ()
 main = do
+    let v :: Exp (Vec 3 Int) = vecWrite (vecWrite (vecWrite vecEmpty 0 69) 1 420) 2 42
+    putStrLn $ "vec[0]: " <> show (runExp (vecIndex v 0))
+    putStrLn $ "vec[1]: " <> show (runExp (vecIndex v 1))
+    putStrLn $ "vec[2]: " <> show (runExp (vecIndex v 2))
     scene <- loadScene
     G.animateArrayWith PTX.run1 (G.InWindow "BVH" (640, 480) (10,10)) (1,1) (render scene)
 

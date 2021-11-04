@@ -7,8 +7,10 @@
 {-# LANGUAGE BlockArguments #-}
 module LinAlg where
 
+import Data.Primitive
 import qualified Prelude as P hiding ((<), (>), (&&))
 import Data.Array.Accelerate as A
+import Data.Array.Accelerate.Sugar.Elt as A
 import Data.Array.Accelerate.Linear.V3 as V3
 import Data.Array.Accelerate.Linear.V4 as V4
 import Data.Array.Accelerate.Linear.Matrix as M
@@ -158,6 +160,7 @@ slabTest (Ray o d) (BB vmin vmax) (TriangleHitInfo t _ _ _) = let
 
 data BVH = BVH_ Bool Int Int BB
     deriving (Generic, Elt, Show)
+
 
 pattern BVH :: Exp Bool -> Exp Int -> Exp Int -> Exp BB -> Exp BVH
 pattern BVH leaf l r bb = A.Pattern (leaf, l, r, bb)

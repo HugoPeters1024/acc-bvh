@@ -15,5 +15,17 @@ cradle:
     - path: "./app/Stack.hs"
       component: "acc-structure:exe:acc-structure"
 
-    - path: "./app/Scratch.hs"
-      component: "acc-structure:exe:acc-structure"
+    - path: "./accelerate/src"
+      component: "lib:accelerate"
+
+    - path: "./accelerate-io/accelerate-io-vector/src"
+      component: "lib:accelerate-io-vector"
+
+    - path: "./accelerate-llvm/accelerate-llvm/src"
+      component: "lib:accelerate-llvm"
+
+    - path: "./accelerate-llvm/accelerate-llvm-native/src"
+      component: "lib:accelerate-llvm-native"
+
+    - path: "./accelerate-llvm/accelerate-llvm-ptx/src"
+      component: "lib:accelerate-llvm-ptx"
