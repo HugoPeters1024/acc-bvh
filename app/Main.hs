@@ -136,9 +136,6 @@ sceneIntersect (T2 triangles bvh) rays =
             newstate :: Exp (TriangleHitInfo, Stack 20 Int)
             newstate = node & match \case
                 Leaf start count _ -> let
-                  whileCond :: Exp (Int, TriangleHitInfo) -> Exp Bool
-                  whileCond (T2 i _) = i A.< (start + count)
-
                   itWhile :: Exp Int -> Exp TriangleHitInfo -> Exp TriangleHitInfo
                   itWhile i hi = let di = I1 i in closer hi (rayIntersect di (triangles!di) ray)
 

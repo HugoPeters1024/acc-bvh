@@ -111,8 +111,8 @@ pattern TriangleHitInfo t u v i = A.Pattern (t, u, v, i)
 
 closer :: Exp TriangleHitInfo -> Exp TriangleHitInfo -> Exp TriangleHitInfo
 closer a@(TriangleHitInfo ta _ _ ia) b@(TriangleHitInfo tb _ _ ib) = T2 ia ib & match \case
-    (T2 Nothing_ _) -> b
     (T2 _ Nothing_) -> a
+    (T2 Nothing_ _) -> b
     (T2 (Just_ _) (Just_ _)) -> ta A.< tb A.? (a , b)
 
 setT :: Exp Float -> Exp TriangleHitInfo -> Exp TriangleHitInfo
@@ -120,8 +120,8 @@ setT t (TriangleHitInfo _ a b c) = TriangleHitInfo t a b c
 
 
 rayTriangleIsect :: Exp Triangle -> Exp Ray -> Exp (Maybe (Float, Float, Float))
-rayTriangleIsect (Triangle v0 v1 v2) (Ray o d) = 
-    let
+rayTriangleIsect triangle ray = T2 triangle ray & match \case 
+    T2 (Triangle v0 v1 v2) (Ray o d) -> let
         v0v1 = v1 - v0
         v0v2 = v2 - v0
         pvec = d `cross` v0v2
@@ -135,8 +135,8 @@ rayTriangleIsect (Triangle v0 v1 v2) (Ray o d) =
         v = (d `dot` qvec) * invDet
 
         t = (v0v2 `dot` qvec) * invDet
-    in (P.abs det > 0.0001 && t > 0 && u > 0 && v > 0 && u + v < 1) 
-       ? (Just_ (T3 t u v), Nothing_)
+        in (P.abs det > 0.0001 && t > 0 && u > 0 && v > 0 && u + v < 1) 
+           ? (Just_ (T3 t u v), Nothing_)
 
 data BB = BB_ V3f V3f
     deriving (Generic, Elt, Show)
@@ -145,17 +145,18 @@ pattern BB :: Exp V3f -> Exp V3f -> Exp BB
 pattern BB vmin vmax = A.Pattern (vmin, vmax)
 
 slabTest :: Exp Ray -> Exp BB -> Exp TriangleHitInfo -> Exp Bool
-slabTest (Ray o d) (BB vmin vmax) (TriangleHitInfo t _ _ _) = let
-    invd :: Exp V3f
-    invd = 1.0 / o
+slabTest ray bb thinfo = T3 ray bb thinfo & match \case 
+    T3 (Ray o d) (BB vmin vmax) (TriangleHitInfo t _ _ _) -> let
+        invd :: Exp V3f
+        invd = 1.0 A./ d
 
-    t0 = (vmin - o) * invd
-    t1 = (vmax - o) * invd
-    min3 = min3f t0 t1
-    max3 = max3f t0 t1
-    tmin = maxComponent min3
-    tmax = minComponent max3
-    in True_ --(tmax A.>= max 0 tmin) A.&& (tmin A.< t)
+        t0 = (vmin - o) * invd
+        t1 = (vmax - o) * invd
+        min3 = min3f t0 t1
+        max3 = max3f t1 t0
+        tmin = A.max 0 $ maxComponent min3
+        tmax = minComponent max3
+        in (tmax A.>= tmin) A.&& (tmin A.< t)
 
 
 data BVH = BVH_ Bool Int Int BB

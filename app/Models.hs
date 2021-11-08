@@ -1,7 +1,9 @@
 module Models where
 
+import Debug.Trace
 import Codec.Wavefront
 import Codec.Wavefront.IO
+import Control.Monad.State
 import qualified Data.Vector as V
 import qualified Data.Vector.Algorithms.Intro as V
 import qualified Data.Array.Accelerate as A
@@ -23,8 +25,6 @@ triangleBB (Triangle_ v0 v1 v2) = BB_ (min3f_ (min3f_ v0 v1) v2) (max3f_ (max3f_
 
 triangleC :: Triangle -> V3f
 triangleC (Triangle_ v0 v1 v2) = 0.33333333 * (v0 + v1 + v2)
-
-
 
 grow :: BB -> BB -> BB
 grow (BB_ vminl vmaxl) (BB_ vminr vmaxr) = BB_ (min3f_ vminl vminr) (max3f_ vmaxl vmaxr)
@@ -61,6 +61,9 @@ loadTriangles path = do
 
     pure $ V.map convert faces
 
+
+trace' :: Show a => a -> a
+trace' x = trace (show x) x
     
 
 constructBVH :: V.Vector Triangle -> (V.Vector BVH, V.Vector Triangle)
@@ -69,24 +72,25 @@ constructBVH triangles = let
     gen :: V.Vector Triangle -> (Int, Int) -> Int -> (V.Vector BVH, V.Vector Triangle)
     gen allTriangles (start, count) idx = let
         triangles = V.take count (V.drop start allTriangles)
-        centroids = V.map triangleC triangles
         gbox = V.foldl1 grow (V.map triangleBB triangles)
-        trianglesSorted = case dominantAxisBB gbox of
-                X -> V.modify (V.sortBy (st svx)) allTriangles
-                Y -> V.modify (V.sortBy (st svy)) allTriangles
-                Z -> V.modify (V.sortBy (st svz)) allTriangles
 
-        newTriangles = V.update allTriangles (V.zip (V.generate count (+start)) trianglesSorted)
-
-        in if V.length triangles < 20000
-              then (V.fromList [BVH_ False start count gbox], newTriangles)
+        in if count < 10
+              then (V.fromList [BVH_ False start count gbox], allTriangles)
               else let
+                    trianglesSorted = case dominantAxisBB gbox of
+                            X -> V.modify (V.sortBy (st svx)) triangles
+                            Y -> V.modify (V.sortBy (st svy)) triangles
+                            Z -> V.modify (V.sortBy (st svz)) triangles
+                    newTriangles = V.update allTriangles (V.zip (V.generate count (+start)) trianglesSorted)
+                    countLeft = count `div` 2
+                    countRight = count - countLeft
                     leftIdx = idx + 1
-                    (left, tr) = gen newTriangles (start, count `div` 2) leftIdx
+                    (left, tr) = gen newTriangles (start, countLeft) leftIdx
                     rightIdx = leftIdx + V.length left
-                    (right, tr') = gen tr (start + count `div` 2, count `div` 2) rightIdx
+                    (right, tr') = gen tr (start + countLeft, countRight) rightIdx
                     in (V.cons (BVH_ True leftIdx rightIdx gbox) (left V.++ right), tr')
     in gen triangles (0, V.length triangles) 0
+
 
 toAcc' :: (A.Elt a) => V.Vector a -> A.Vector a
 toAcc' v = A.fromFunction (A.Z A.:. V.length v) (\(A.Z A.:. i) -> v V.! i)

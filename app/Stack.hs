@@ -2,6 +2,12 @@
 {-# LANGUAGE FlexibleInstances           #-}
 {-# LANGUAGE FlexibleContexts                 #-}
 {-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE DeriveGeneric                 #-}
+{-# LANGUAGE DeriveAnyClass                 #-}
+{-# LANGUAGE StandaloneDeriving                 #-}
+{-# LANGUAGE PatternSynonyms                 #-}
+{-# LANGUAGE TypeFamilies                 #-}
+{-# LANGUAGE ConstraintKinds                 #-}
 
 module Stack (
     Stack,
@@ -10,32 +16,39 @@ module Stack (
 ) where
 
 import GHC.TypeLits
+import GHC.Generics
 import Data.Primitive
 import qualified Data.Array.Accelerate as A
 
-type Stack n a = (Int, A.Vec n a)
+data Stack n a = Stack_ Int (A.Vec n a) deriving (Generic)
+deriving instance (KnownNat n, A.VecElt a) => A.Elt (Stack n a)
+
+type Stacking n a = (KnownNat n, A.VecElt a, A.Vectoring (A.Exp (A.Vec n a)) (A.Exp a))
+
+pattern Stack :: (KnownNat n, A.VecElt a) => A.Exp Int -> A.Exp (A.Vec n a) -> A.Exp (Stack n a)
+pattern Stack headIdx dat = A.Pattern (headIdx, dat)
 
 stackPush_ :: (A.Vectoring (A.Vec n a) a) => Stack n a -> a -> Stack n a
-stackPush_ (headIdx, dat) v = (headIdx+1, A.vecWrite dat headIdx v)
+stackPush_ (Stack_ headIdx dat) v = Stack_ (headIdx+1) (A.vecWrite dat headIdx v)
 
 stackPop_ :: (A.Vectoring (A.Vec n a) a) => Stack n a -> (Stack n a, a)
-stackPop_ (headIdx, dat) = ((headIdx-1, dat), A.vecIndex dat (headIdx-1))
+stackPop_ (Stack_ headIdx dat) = (Stack_ (headIdx-1) dat, A.vecIndex dat (headIdx-1))
 
 stackIsEmpty_ :: Stack n a -> Bool
-stackIsEmpty_ (0, _) = True
+stackIsEmpty_ (Stack_ 0 _) = True
 stackIsEmpty_ _      = False
 
 emptyStack_ :: (KnownNat n, Prim a) => Stack n a
-emptyStack_ = (0, A.vecEmpty)
+emptyStack_ = Stack_ 0 A.vecEmpty
 
-stackPush :: (KnownNat n, A.VecElt a, A.Vectoring (A.Exp (A.Vec n a)) (A.Exp a)) => A.Exp (Stack n a) -> A.Exp a -> A.Exp (Stack n a)
-stackPush (A.T2 headIdx dat) v = A.T2 (headIdx+1) (A.vecWrite dat headIdx v)
+stackPush :: (Stacking n a) => A.Exp (Stack n a) -> A.Exp a -> A.Exp (Stack n a)
+stackPush (Stack headIdx dat) v = Stack (headIdx+1) (A.vecWrite dat headIdx v)
 
-stackPop :: (KnownNat n, A.VecElt a, A.Vectoring (A.Exp (A.Vec n a)) (A.Exp a)) => A.Exp (Stack n a) -> A.Exp (Stack n a, a)
-stackPop (A.T2 headIdx dat) = A.T2 (A.T2 (headIdx-1) dat) (A.vecIndex dat (headIdx-1))
+stackPop :: (Stacking n a) => A.Exp (Stack n a) -> A.Exp (Stack n a, a)
+stackPop (Stack headIdx dat) = A.T2 (Stack (headIdx-1) dat) (A.vecIndex dat (headIdx-1))
 
-stackIsEmpty :: (KnownNat n, A.VecElt a) => A.Exp (Stack n a) -> A.Exp Bool
-stackIsEmpty (A.T2 headIdx _) = headIdx A.== 0 A.? (A.True_, A.False_)
+stackIsEmpty :: (Stacking n a) => A.Exp (Stack n a) -> A.Exp Bool
+stackIsEmpty (Stack headIdx _) = headIdx A.== 0 A.? (A.True_, A.False_)
 
-emptyStack :: (A.VecElt a, KnownNat n) => A.Exp (Stack n a)
-emptyStack = A.T2 0 A.vecEmpty
+emptyStack :: (Stacking n a) => A.Exp (Stack n a)
+emptyStack = Stack 0 A.vecEmpty
