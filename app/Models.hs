@@ -74,7 +74,7 @@ constructBVH triangles = let
         triangles = V.take count (V.drop start allTriangles)
         gbox = V.foldl1 grow (V.map triangleBB triangles)
 
-        in if count < 10
+        in if count < 50
               then (V.fromList [BVH_ False start count gbox], allTriangles)
               else let
                     trianglesSorted = case dominantAxisBB gbox of

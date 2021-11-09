@@ -42,6 +42,17 @@ import Stack
 
 type Scene = Acc (Vector Triangle, Vector BVH)
 
+windowWidth :: Int
+windowWidth = 640
+windowHeight :: Int
+windowHeight = 480
+
+ewindowWidth :: Exp Int
+ewindowWidth = lift windowWidth
+
+ewindowHeight :: Exp Int
+ewindowHeight = lift windowHeight
+
 vecToColor :: Exp V3f -> Exp G.Colour
 vecToColor (V3_ x y z) = G.rgba x y z 1
 
@@ -53,9 +64,6 @@ hitInfoToColor (T2 triangles _) (TriangleHitInfo t u v ti) = ti & match \case
         normal = getNormal triangle
         angle = dot normal (V3.V3_ 0 1 0)
         in G.rgba angle angle angle angle
-
-transform :: Exp Float -> Exp Mat4f
-transform time = identity `mtranslate` V3_ (time/10) 0 0
 
 cube :: Vector Triangle
 cube = A.fromList (A.Z :. 12)
@@ -74,7 +82,7 @@ cube = A.fromList (A.Z :. 12)
 
 loadScene :: IO Scene
 loadScene = do
-    triangles <- loadTriangles "teapot.obj"
+    triangles <- loadTriangles "florian_small.obj"
     putStrLn $ "nr triangles: " <> show (V.length triangles)
     let (bvh, sortedTriangles) = constructBVH triangles
     putStrLn $ "nr bvh nodes: " <> show (V.length bvh)
@@ -84,7 +92,7 @@ loadScene = do
 genRay :: Exp Float -> Exp Float -> Exp Float -> Exp Ray
 genRay time x y = 
     let
-        eye = V3_ 0 (time * 0.2) (-6)
+        eye = V3_ 0 ((time-15) * 2.2) (-60)
         viewDir = V3_ 0 0 1
         dist = 1.0
         screenCenter = eye + viewDir * dist
@@ -158,7 +166,7 @@ rayIntersect i triangle ray = rayTriangleIsect triangle ray & match \case
     Just_ (T3 t u v) -> TriangleHitInfo t u v (Just_ i)
 
 initialRays :: Exp Float -> Acc (Vector Ray)
-initialRays time = A.flatten $ A.generate (I2 480 640) (\(I2 y x) -> genRay time (divF x 640) (divF y 480))
+initialRays time = A.flatten $ A.generate (I2 ewindowHeight ewindowWidth) (\(I2 y x) -> genRay time (divF x ewindowWidth) (divF y ewindowHeight))
 
 white :: Exp G.Colour
 white = G.rgba 1 1 1 1
@@ -170,7 +178,7 @@ render :: Scene -> Exp Float -> Acc (Array DIM2 G.Colour)
 render scene time = let
         rays = initialRays time
         pixels = A.map (hitInfoToColor scene) (sceneIntersect scene rays)
-        in reshape (I2 480 640) pixels
+        in reshape (I2 ewindowHeight ewindowWidth) pixels
 
 testHead :: (KnownNat n, VecElt a) => Exp (Vec n a) -> Exp (Vec n a, a)
 testHead v = let x :: Exp Int = 0 in T2 v (vecIndex v x)
@@ -186,5 +194,5 @@ main = do
     putStrLn $ "vec[1]: " <> show (runExp (vecIndex v 1))
     putStrLn $ "vec[2]: " <> show (runExp (vecIndex v 2))
     scene <- loadScene
-    G.animateArrayWith PTX.run1 (G.InWindow "BVH" (640, 480) (10,10)) (1,1) (render scene)
+    G.animateArrayWith PTX.run1 (G.InWindow "BVH" (windowWidth, windowHeight) (10,10)) (1,1) (render scene)
 
