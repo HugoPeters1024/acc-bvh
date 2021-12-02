@@ -15,6 +15,7 @@ import Data.Array.Accelerate.Linear.V3 as V3
 import Data.Array.Accelerate.Linear.V4 as V4
 import Data.Array.Accelerate.Linear.Matrix as M
 import Data.Array.Accelerate.Linear.Metric
+import Control.DeepSeq (NFData(..))
 
 type V3f = V3 Float
 type Mat4f = M44 Float
@@ -82,7 +83,7 @@ mkTranslation :: Exp V3f -> Exp Mat4f
 mkTranslation = mtranslate identity
 
 data Triangle = Triangle_ V3f V3f V3f
-    deriving (Generic, Elt, Show)
+    deriving (Generic, Elt, Show, NFData, P.Read)
 
 pattern Triangle :: Exp V3f -> Exp V3f -> Exp V3f -> Exp Triangle
 pattern Triangle v0 v1 v2 = A.Pattern (v0, v1, v2)
@@ -139,7 +140,7 @@ rayTriangleIsect triangle ray = T2 triangle ray & match \case
            ? (Just_ (T3 t u v), Nothing_)
 
 data BB = BB_ V3f V3f
-    deriving (Generic, Elt, Show)
+    deriving (Generic, Elt, Show, NFData, P.Read)
 
 pattern BB :: Exp V3f -> Exp V3f -> Exp BB
 pattern BB vmin vmax = A.Pattern (vmin, vmax)
@@ -160,7 +161,7 @@ slabTest ray bb thinfo = T3 ray bb thinfo & match \case
 
 
 data BVH = BVH_ Bool Int Int BB
-    deriving (Generic, Elt, Show)
+    deriving (Generic, Elt, Show, NFData, P.Read)
 
 
 pattern BVH :: Exp Bool -> Exp Int -> Exp Int -> Exp BB -> Exp BVH

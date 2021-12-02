@@ -64,7 +64,6 @@ loadTriangles path = do
 
 trace' :: Show a => a -> a
 trace' x = trace (show x) x
-    
 
 constructBVH :: V.Vector Triangle -> (V.Vector BVH, V.Vector Triangle)
 constructBVH triangles = let
@@ -74,7 +73,7 @@ constructBVH triangles = let
         triangles = V.take count (V.drop start allTriangles)
         gbox = V.foldl1 grow (V.map triangleBB triangles)
 
-        in if count < 50
+        in if count < 30
               then (V.fromList [BVH_ False start count gbox], allTriangles)
               else let
                     trianglesSorted = case dominantAxisBB gbox of

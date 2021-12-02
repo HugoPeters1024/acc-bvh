@@ -16,7 +16,7 @@
 module Main where
 
 
-import Debug.Trace
+import System.IO
 import Prelude as P
 import LinAlg
 import qualified Graphics.Gloss as Gloss
@@ -36,9 +36,11 @@ import Control.Monad.Identity
 import GHC.Generics
 import GHC.TypeNats
 import qualified Data.Vector as V
+import Control.DeepSeq (force)
 
 import Models
 import Stack
+--import Structures
 
 type Scene = Acc (Vector Triangle, Vector BVH)
 
@@ -80,11 +82,29 @@ cube = A.fromList (A.Z :. 12)
   , Triangle_ (V3.V3 ( 1.0) ( 1.0) ( 1.0)) (V3.V3 (-1.0) ( 1.0) (-1.0)) (V3.V3 (-1.0) ( 1.0) ( 1.0)) 
   , Triangle_ (V3.V3 ( 1.0) ( 1.0) ( 1.0)) (V3.V3 (-1.0) ( 1.0) ( 1.0)) (V3.V3 ( 1.0) (-1.0) ( 1.0))]
 
+saveSceneToFile :: V.Vector Triangle -> V.Vector BVH -> IO ()
+saveSceneToFile ts bvh = do
+    o <- openFile "scene.txt" WriteMode
+    hPrint o ts
+    hPrint o bvh
+
+loadSceneFromFile :: String -> IO (V.Vector Triangle, V.Vector BVH)
+loadSceneFromFile fname = do
+    [tsData, bvhData] <- lines <$> readFile fname
+    let ts = read tsData :: V.Vector Triangle
+    let bvh = read bvhData :: V.Vector BVH
+    return (ts, bvh)
+
+    
+
+
 loadScene :: IO Scene
 loadScene = do
-    triangles <- loadTriangles "florian_small.obj"
-    putStrLn $ "nr triangles: " <> show (V.length triangles)
-    let (bvh, sortedTriangles) = constructBVH triangles
+    (sortedTriangles, bvh) <- force <$> loadSceneFromFile "scene.txt"
+    --triangles <- force <$> loadTriangles "florian_small.obj"
+    putStrLn $ "nr triangles: " <> show (V.length sortedTriangles)
+    --let (bvh, sortedTriangles) = force $ constructBVH triangles
+    --saveSceneToFile sortedTriangles bvh
     putStrLn $ "nr bvh nodes: " <> show (V.length bvh)
     pure $ T2 (toAcc sortedTriangles) (toAcc bvh)
 
@@ -92,14 +112,16 @@ loadScene = do
 genRay :: Exp Float -> Exp Float -> Exp Float -> Exp Ray
 genRay time x y = 
     let
-        eye = V3_ 0 ((time-15) * 2.2) (-60)
-        viewDir = V3_ 0 0 1
-        dist = 1.0
+        viewTarget :: Exp V3f = V3_ 0 1 0
+        angle :: Exp Float = time / 4
+        viewDist :: Exp Float = 80
+        eye = V3_ (viewDist * cos angle) 1 (viewDist * sin angle)
+        viewDir = normalize $ viewTarget - eye
+        dist = 1.8
         screenCenter = eye + viewDir * dist
         screenHorz = V3.cross (V3_ 0 1 0) viewDir
         screenVert = V3.cross screenHorz viewDir
         target = screenCenter + (screenHorz A.* 2 A.* V3_ x x x) + (screenVert A.* 2 A.* V3_ y y y) - screenHorz - screenVert
-        --target = V3_ x y (-9)
         direction = normalize (target - eye)
     in Ray eye direction
 
@@ -118,13 +140,13 @@ rangeLoop (T2 start end) f initial = let
     it (T2 i s) = T2 (i+1) (f i s)
     in A.snd $ A.while whileCond it (T2 start initial)
 
-
-type WState = Exp (TriangleHitInfo, Stack 20 Int)
+type ShortStack = Stack 13 Int16
+type WState = Exp (TriangleHitInfo, ShortStack)
 
 sceneIntersect :: Scene -> Acc (Vector Ray) -> Acc (Vector TriangleHitInfo)
 sceneIntersect (T2 triangles bvh) rays =
     let
-        startStack :: Exp (Stack 20 Int)
+        startStack :: Exp ShortStack
         startStack = stackPush emptyStack 0
 
         startHit :: Exp TriangleHitInfo
@@ -133,15 +155,15 @@ sceneIntersect (T2 triangles bvh) rays =
         initialWhileState :: WState
         initialWhileState = T2 startHit startStack
 
-        whileCond :: Exp (TriangleHitInfo, Stack 20 Int) -> Exp Bool
+        whileCond :: Exp (TriangleHitInfo, ShortStack) -> Exp Bool
         whileCond (T2 _ stack) = A.not (stackIsEmpty stack)
 
-        itWhile :: Exp Ray -> Exp (TriangleHitInfo, Stack 20 Int) -> Exp (TriangleHitInfo, Stack 20 Int)
+        itWhile :: Exp Ray -> Exp (TriangleHitInfo, ShortStack) -> Exp (TriangleHitInfo, ShortStack)
         itWhile ray (T2 hi stack) = let
 
-            T2 poppedstack node :: Exp (Stack 20 Int, BVH) = let T2 stack' nodeIdx = stackPop stack in T2 stack' (bvh ! I1 nodeIdx)
+            T2 poppedstack node :: Exp (ShortStack, BVH) = let T2 stack' nodeIdx = stackPop stack in T2 stack' (bvh ! I1 (A.fromIntegral nodeIdx))
 
-            newstate :: Exp (TriangleHitInfo, Stack 20 Int)
+            newstate :: Exp (TriangleHitInfo, ShortStack)
             newstate = node & match \case
                 Leaf start count _ -> let
                   itWhile :: Exp Int -> Exp TriangleHitInfo -> Exp TriangleHitInfo
@@ -151,7 +173,7 @@ sceneIntersect (T2 triangles bvh) rays =
 
                 Node l r bbox -> let
                   bb = slabTest ray bbox hi
-                  newstack :: Exp (Stack 20 Int) = stackPush (stackPush poppedstack l) r
+                  newstack :: Exp ShortStack = stackPush (stackPush poppedstack (A.fromIntegral l)) (A.fromIntegral r)
                   in T2 hi (bb ? (newstack, poppedstack))
 
 
@@ -174,14 +196,12 @@ white = G.rgba 1 1 1 1
 divF :: Exp Int -> Exp Int -> Exp Float
 divF a b = A.fromIntegral a / A.fromIntegral b
 
-render :: Scene -> Exp Float -> Acc (Array DIM2 G.Colour)
+render :: Scene -> Exp Float -> Acc (Matrix G.Colour)
 render scene time = let
         rays = initialRays time
         pixels = A.map (hitInfoToColor scene) (sceneIntersect scene rays)
         in reshape (I2 ewindowHeight ewindowWidth) pixels
 
-testHead :: (KnownNat n, VecElt a) => Exp (Vec n a) -> Exp (Vec n a, a)
-testHead v = let x :: Exp Int = 0 in T2 v (vecIndex v x)
 
 runExp :: Elt e => Exp e -> e
 runExp e = indexArray (PTX.run (generate I0 (const e))) A.Z
