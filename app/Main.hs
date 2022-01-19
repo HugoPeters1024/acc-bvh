@@ -140,7 +140,7 @@ rangeLoop (T2 start end) f initial = let
     it (T2 i s) = T2 (i+1) (f i s)
     in A.snd $ A.while whileCond it (T2 start initial)
 
-type ShortStack = Stack 13 Int16
+type ShortStack = Stack 15 Int16
 type WState = Exp (TriangleHitInfo, ShortStack)
 
 sceneIntersect :: Scene -> Acc (Vector Ray) -> Acc (Vector TriangleHitInfo)
